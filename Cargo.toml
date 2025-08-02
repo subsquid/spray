@@ -11,6 +11,7 @@ clap = { version = "4.5.41", features = ["derive"] }
 faster-hex = "0.10.0"
 jsonrpsee = { version = "0.25.1", features = ["server", "tracing"] }
 lexical-core = { version = "1.0.5", default-features = false, features = ["write", "write-integers", "write-floats"] }
+paste = "1.0.15"
 prost = "0.13.5"
 prost-types = "0.13.5"
 serde = { version = "1.0.219", features = ["derive"] }

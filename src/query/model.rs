@@ -60,6 +60,15 @@ pub type Bytes = String;
 
 
 request! {
+    pub struct TransactionRequest {
+        pub fee_payer: Option<Vec<Base58Bytes>>,
+        pub mentions_account: Option<Vec<Base58Bytes>>,
+        pub instructions: bool,
+        pub logs: bool,
+        pub balances: bool,
+        pub token_balances: bool,
+    }
+
     pub struct InstructionRequest {
         pub program_id: Option<Vec<Base58Bytes>>,
         pub discriminator: Option<Vec<Bytes>>,
@@ -93,26 +102,31 @@ request! {
         pub parent_instructions: bool,
         pub logs: bool,
     }
-}
 
-
-request! {
-    pub struct TransactionRequest {
-        pub fee_payer: Option<Vec<Base58Bytes>>,
-        pub mentions_account: Option<Vec<Base58Bytes>>,
-        pub instructions: bool,
-        pub logs: bool,
-        pub balances: bool,
-        pub token_balances: bool,
+    pub struct TokenBalanceRequest {
+        pub account: Option<Vec<Base58Bytes>>,
+        pub pre_mint: Option<Vec<Base58Bytes>>,
+        pub post_mint: Option<Vec<Base58Bytes>>,
+        pub pre_program_id: Option<Vec<Base58Bytes>>,
+        pub post_program_id: Option<Vec<Base58Bytes>>,
+        pub pre_owner: Option<Vec<Base58Bytes>>,
+        pub post_owner: Option<Vec<Base58Bytes>>,
+        pub transaction: bool,
+        pub transaction_instructions: bool,
     }
-}
 
+    pub struct BalanceRequest {
+        pub account: Option<Vec<Base58Bytes>>,
+        pub transaction: bool,
+        pub transaction_instructions: bool,
+    }
 
-request! {
     pub struct SolanaQuery {
         pub fields: FieldSelection,
         pub include_all_blocks: bool,
         pub transactions: Vec<TransactionRequest>,
         pub instructions: Vec<InstructionRequest>,
+        pub balances: Vec<BalanceRequest>,
+        pub token_balances: Vec<TokenBalanceRequest>,
     }
 }

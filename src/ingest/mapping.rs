@@ -1,5 +1,5 @@
 use super::source::TransactionUpdate;
-use crate::data::{AccountDict, Instruction, JsonString, Transaction, TransactionData, TransactionVersion};
+use crate::data::{AccountList, Balance, Instruction, JsonString, TokenBalance, Transaction, TransactionData, TransactionVersion};
 use crate::geyser::solana::storage::confirmed_block::MessageAddressTableLookup;
 use crate::json_builder::{safe_prop, JsonBuilder};
 
@@ -27,7 +27,7 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
         }),
     };
 
-    let accounts: AccountDict = {
+    let accounts: AccountList = {
         let len = update.account_keys.len() + meta.loaded_writable_addresses.len() + meta.loaded_readonly_addresses.len();
         let mut accounts = Vec::with_capacity(len);
         accounts.extend(update.account_keys.iter().map(|a| bs58::encode(a).into_string()));
@@ -56,15 +56,21 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
             address.clear();
             address.push(i);
 
-            instructions.push(Instruction {
-                instruction_address: address.clone(),
-                program_id: ins.program_id_index as u8,
-                accounts: ins.accounts,
-                data: bs58::encode(&ins.data).into_string(),
-                binary_data: ins.data,
-                account_dict: accounts.clone(),
-                is_committed: transaction.err.is_none(),
-            });
+            macro_rules! push_instruction {
+                ($ins:ident) => {
+                    instructions.push(Instruction {
+                        instruction_address: address.clone(),
+                        program_id: $ins.program_id_index as u8,
+                        accounts: $ins.accounts,
+                        data: bs58::encode(&$ins.data).into_string(),
+                        binary_data: $ins.data,
+                        account_list: accounts.clone(),
+                        is_committed: transaction.err.is_none(),
+                    });
+                };
+            }
+
+            push_instruction!(ins);
 
             for ins in inner {
                 let stack_height = ins.stack_height.unwrap_or(2) as usize;
@@ -79,18 +85,57 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
                     address.push(0);
                 }
 
-                instructions.push(Instruction {
-                    instruction_address: address.clone(),
-                    program_id: ins.program_id_index as u8,
-                    accounts: ins.accounts,
-                    data: bs58::encode(&ins.data).into_string(),
-                    binary_data: ins.data,
-                    account_dict: accounts.clone(),
-                    is_committed: transaction.err.is_none(),
-                });
+                push_instruction!(ins);
             }
         }
         instructions
+    };
+
+    let balances = {
+        assert_eq!(meta.pre_balances.len(), meta.post_balances.len());
+        assert!(accounts.len() >= meta.pre_balances.len());
+        let mut balances = Vec::with_capacity(
+            std::cmp::min(accounts.len(), meta.pre_balances.len() + meta.post_balances.len())
+        );
+        for (i, (pre, post)) in meta.pre_balances.into_iter().zip(meta.post_balances).enumerate() {
+            if pre != post {
+                balances.push(Balance {
+                    account: accounts[i].clone(),
+                    pre,
+                    post
+                })
+            }
+        }
+        balances.sort_by(|a, b| a.account.cmp(&b.account));;
+        balances
+    };
+
+    let token_balances = {
+        let mut balances = vec![TokenBalance::default(); accounts.len()];
+
+        for b in meta.pre_token_balances {
+            let rec = &mut balances[b.account_index as usize];
+            rec.account = accounts[b.account_index as usize].clone();
+            rec.pre_mint = Some(b.mint);
+            rec.pre_decimals = b.ui_token_amount.as_ref().map(|ui| ui.decimals);
+            rec.pre_program_id = Some(b.program_id);
+            rec.pre_owner = Some(b.owner);
+            rec.pre_amount = b.ui_token_amount.map(|ui| ui.amount);
+        }
+
+        for b in meta.post_token_balances {
+            let rec = &mut balances[b.account_index as usize];
+            rec.account = accounts[b.account_index as usize].clone();
+            rec.post_mint = Some(b.mint);
+            rec.post_decimals = b.ui_token_amount.as_ref().map(|ui| ui.decimals);
+            rec.post_program_id = Some(b.program_id);
+            rec.post_owner = Some(b.owner);
+            rec.post_amount = b.ui_token_amount.map(|ui| ui.amount);
+        }
+
+        balances.retain(|b| b.pre_mint.is_some() || b.post_mint.is_some());
+        balances.sort_by(|a, b| a.account.cmp(&b.account));
+        balances
     };
 
     TransactionData {
@@ -98,6 +143,8 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
         transaction_index: update.index,
         transaction,
         instructions,
+        balances,
+        token_balances,
         accounts
     }
 }

@@ -1,4 +1,5 @@
 use super::item_filter::{ItemFilter, Relations};
+use super::relation_mask::relation_mask;
 use super::selected_items::SelectedItems;
 use crate::data::{Instruction, TransactionData};
 use crate::query::util::parse_hex;
@@ -6,25 +7,14 @@ use crate::query::InstructionRequest;
 use std::collections::HashSet;
 
 
-#[derive(Debug, Default)]
-pub struct InstructionRelations {
-    pub transaction_balances: bool,
-    pub transaction_token_balances: bool,
-    pub transaction_instructions: bool,
-    pub inner_instructions: bool,
-    pub parent_instructions: bool,
-    pub logs: bool,
-}
-
-
-impl Relations for InstructionRelations {
-    fn include(&mut self, other: &Self) {
-        self.transaction_balances |= other.transaction_balances;
-        self.transaction_token_balances |= other.transaction_token_balances;
-        self.transaction_instructions |= other.transaction_instructions;
-        self.inner_instructions |= other.inner_instructions;
-        self.parent_instructions |= other.parent_instructions;
-        self.logs |= other.logs;
+relation_mask! {
+    InstructionRelations {
+        transaction_balances,
+        transaction_token_balances,
+        transaction_instructions,
+        inner_instructions,
+        parent_instructions,
+        logs,
     }
 }
 
@@ -52,13 +42,15 @@ impl InstructionFilter {
         for (i, ins) in tx.instructions.iter().enumerate() {
             if let Some(rel) = ItemFilter::or(&self.requests, ins) {
                 sel.instructions[i] = true;
-                sel.include_all_instructions |= rel.transaction_instructions;
+                sel.include_all_instructions |= rel.has_transaction_instructions();
+                sel.include_all_balances |= rel.has_transaction_balances();
+                sel.include_all_token_balances |= rel.has_transaction_token_balances();
                 
-                if rel.inner_instructions && !sel.include_all_instructions {
+                if !sel.include_all_instructions && rel.has_inner_instructions() {
                     Self::eval_inner_instructions(sel, tx, i);
                 }
 
-                if rel.parent_instructions && !sel.include_all_instructions {
+                if !sel.include_all_instructions && rel.has_parent_instructions() {
                     Self::eval_parent_instructions(sel, tx, i);
                 }
             }
@@ -112,7 +104,7 @@ pub fn compile_instruction_request(req: InstructionRequest) -> Option<PreparedIn
         }
         let set: HashSet<_> = list.into_iter().collect();
         filter.add(move |ins| {
-            set.contains(&ins.account_dict[ins.program_id as usize])
+            set.contains(&ins.account_list[ins.program_id as usize])
         });
     }
 
@@ -141,7 +133,7 @@ pub fn compile_instruction_request(req: InstructionRequest) -> Option<PreparedIn
 
         filter.add(move |ins| {
             ins.accounts.iter().any(|i| {
-                set.contains(&ins.account_dict[*i as usize])
+                set.contains(&ins.account_list[*i as usize])
             })
         })
     }
@@ -155,7 +147,7 @@ pub fn compile_instruction_request(req: InstructionRequest) -> Option<PreparedIn
                 let set: HashSet<_> = list.into_iter().collect();
                 filter.add(move |ins| {
                     ins.accounts.get($i).map_or(false, |i| {
-                        set.contains(&ins.account_dict[*i as usize])
+                        set.contains(&ins.account_list[*i as usize])
                     })
                 })
             }
@@ -182,12 +174,12 @@ pub fn compile_instruction_request(req: InstructionRequest) -> Option<PreparedIn
         filter.add(move |ins| ins.is_committed == is_committed)
     }
 
-    filter.relations_mut().transaction_balances = req.transaction_balances;
-    filter.relations_mut().transaction_token_balances = req.transaction_token_balances;
-    filter.relations_mut().transaction_instructions = req.transaction_instructions;
-    filter.relations_mut().inner_instructions = req.inner_instructions;
-    filter.relations_mut().parent_instructions = req.parent_instructions;
-    filter.relations_mut().logs = req.logs;
+    filter.relations_mut().set_transaction_balances(req.transaction_balances);
+    filter.relations_mut().set_transaction_token_balances(req.transaction_token_balances);
+    filter.relations_mut().set_transaction_instructions(req.transaction_instructions);
+    filter.relations_mut().set_inner_instructions(req.inner_instructions);
+    filter.relations_mut().set_parent_instructions(req.parent_instructions);
+    filter.relations_mut().set_logs(req.logs);
 
     Some(filter)
 }

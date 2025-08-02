@@ -5,7 +5,11 @@ use crate::data::TransactionData;
 pub struct SelectedItems {
     pub transaction: bool,
     pub instructions: Vec<bool>,
-    pub include_all_instructions: bool
+    pub balances: Vec<bool>,
+    pub token_balances: Vec<bool>,
+    pub include_all_instructions: bool,
+    pub include_all_balances: bool,
+    pub include_all_token_balances: bool
 }
 
 
@@ -14,7 +18,11 @@ impl SelectedItems {
         Self {
             transaction: false,
             instructions: vec![false; tx.instructions.len()],
-            include_all_instructions: false
+            balances: vec![false; tx.balances.len()],
+            token_balances: vec![false; tx.token_balances.len()],
+            include_all_instructions: false,
+            include_all_balances: false,
+            include_all_token_balances: false
         }
     }
 }
