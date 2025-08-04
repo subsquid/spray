@@ -23,29 +23,34 @@ pub struct BalanceFilter {
 
 
 impl BalanceFilter {
-    pub fn new(requests: Vec<PreparedBalanceRequest>) -> Self {
+    pub fn new(requests: Vec<BalanceRequest>) -> Self {
+        let requests = requests
+            .into_iter()
+            .filter_map(compile_request)
+            .collect();
+        
         Self {
             requests
         }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.requests.is_empty()
+    pub fn is_non_trivial(&self) -> bool {
+        !self.requests.is_empty()
     }
 
     pub fn eval(&self, sel: &mut SelectedItems, tx: &TransactionData) {
         for (i, b) in tx.balances.iter().enumerate() {
             if let Some(rel) = ItemFilter::or(&self.requests, b) {
-                sel.balances[i] = true;
+                sel.balances.add(i);
                 sel.transaction |= rel.has_transaction();
-                sel.include_all_instructions |= rel.has_transaction_instructions();
+                sel.instructions.add_all(rel.has_transaction_instructions());
             }
         }
     }
 }
 
 
-pub fn compile_balance_request(req: BalanceRequest) -> Option<PreparedBalanceRequest> {
+fn compile_request(req: BalanceRequest) -> Option<PreparedBalanceRequest> {
     let mut filter = PreparedBalanceRequest::default();
 
     if let Some(list) = req.account {

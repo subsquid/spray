@@ -1,4 +1,4 @@
-use super::item_filter::{ItemFilter, Relations};
+use super::item_filter::ItemFilter;
 use super::relation_mask::relation_mask;
 use super::selected_items::SelectedItems;
 use crate::data::TransactionData;
@@ -25,14 +25,19 @@ pub struct TransactionFilter {
 
 
 impl TransactionFilter {
-    pub fn new(requests: Vec<PreparedTransactionRequest>) -> Self {
+    pub fn new(requests: Vec<TransactionRequest>) -> Self {
+        let requests = requests
+            .into_iter()
+            .filter_map(compile_request)
+            .collect();
+
         Self {
             requests
         }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.requests.is_empty()
+    pub fn is_non_trivial(&self) -> bool {
+        !self.requests.is_empty()
     }
 
     pub fn eval(&self, sel: &mut SelectedItems, tx: &TransactionData) {
@@ -40,14 +45,14 @@ impl TransactionFilter {
             return
         };
         sel.transaction = true;
-        sel.include_all_instructions |= rel.has_instructions();
-        sel.include_all_balances |= rel.has_balances();
-        sel.include_all_token_balances |= rel.has_token_balances();
+        sel.instructions.add_all(rel.has_instructions());
+        sel.balances.add_all(rel.has_balances());
+        sel.token_balances.add_all(rel.has_token_balances());
     }
 }
 
 
-pub fn compile_transaction_request(req: TransactionRequest) -> Option<PreparedTransactionRequest> {
+fn compile_request(req: TransactionRequest) -> Option<PreparedTransactionRequest> {
     let mut filter = PreparedTransactionRequest::default();
 
     if let Some(list) = req.fee_payer {

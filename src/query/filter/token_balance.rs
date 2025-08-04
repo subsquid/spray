@@ -15,25 +15,34 @@ pub struct TokenBalanceFilter {
 
 
 impl TokenBalanceFilter {
-    pub fn new(requests: Vec<PreparedTokenBalanceRequest>) -> Self {
+    pub fn new(requests: Vec<TokenBalanceRequest>) -> Self {
+        let requests = requests
+            .into_iter()
+            .filter_map(compile_request)
+            .collect();
+
         Self {
             requests
         }
     }
 
+    pub fn is_non_trivial(&self) -> bool {
+        !self.requests.is_empty()
+    }
+
     pub fn eval(&self, sel: &mut SelectedItems, tx: &TransactionData) {
         for (i, b) in tx.token_balances.iter().enumerate() {
             if let Some(rel) = ItemFilter::or(&self.requests, b) {
-                sel.balances[i] = true;
+                sel.balances.add(i);
                 sel.transaction |= rel.has_transaction();
-                sel.include_all_instructions |= rel.has_transaction_instructions();
+                sel.instructions.add_all(rel.has_transaction_instructions());
             }
         }
     }
 }
 
 
-pub fn compile_token_balance_request(req: TokenBalanceRequest) -> Option<PreparedTokenBalanceRequest> {
+fn compile_request(req: TokenBalanceRequest) -> Option<PreparedTokenBalanceRequest> {
     let mut filter = PreparedTokenBalanceRequest::default();
 
     if let Some(list) = req.account {

@@ -3,7 +3,7 @@ use std::debug_assert;
 
 macro_rules! relation_mask {
     ($name:ident { $($rel:ident,)* }) => {
-        #[derive(Default)]
+        #[derive(Default, Clone)]
         pub struct $name {
             mask: super::relation_mask::Bitmask
         }
@@ -50,10 +50,6 @@ pub struct Bitmask {
 
 
 impl Bitmask {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn set(&mut self, i: usize, on: bool) {
         if on {
             self.on(i)

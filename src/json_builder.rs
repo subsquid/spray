@@ -1,4 +1,5 @@
 use lexical_core::ToLexical;
+use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 
 
@@ -46,6 +47,14 @@ impl JsonBuilder {
         self.out.push(b'"');
         self.out.extend_from_slice(s.as_bytes());
         self.out.push(b'"')
+    }
+    
+    pub fn boolean(&mut self, val: bool) {
+        if val {
+            self.raw("true")
+        } else {
+            self.raw("false")
+        }
     }
 
     pub fn safe_prop(&mut self, name: &str) {
@@ -134,3 +143,29 @@ macro_rules! safe_prop {
     };
 }
 pub(crate) use safe_prop;
+
+
+pub struct RawJson<'a> {
+    json: &'a str
+}
+
+
+impl<'a> RawJson<'a> {
+    pub fn new(json: &'a str) -> Self {
+        Self {
+            json
+        }
+    }
+}
+
+
+impl<'a> Serialize for RawJson<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut s = serializer.serialize_struct("$serde_json::private::RawValue", 1)?;
+        s.serialize_field("$serde_json::private::RawValue", self.json)?;
+        s.end()
+    }
+}

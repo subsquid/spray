@@ -8,7 +8,8 @@ use tonic::transport::Uri;
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    pub sources: HashMap<String, GeyserConfig>
+    pub sources: HashMap<String, GeyserConfig>,
+    pub port: Option<u16>
 }
 
 

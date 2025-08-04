@@ -106,7 +106,7 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
                 })
             }
         }
-        balances.sort_by(|a, b| a.account.cmp(&b.account));;
+        balances.sort_by(|a, b| a.account.cmp(&b.account));
         balances
     };
 

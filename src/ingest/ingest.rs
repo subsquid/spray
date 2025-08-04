@@ -1,16 +1,12 @@
 use super::processing::{processing_loop, Broadcast};
-use super::source::{source_loop, SourceMessage, SourceUpdate};
-use crate::data::{BlockData, DataMessage};
+use super::source::{source_loop, SourceMessage};
 use crate::geyser::GeyserClient;
 use crate::Name;
-use anyhow::{anyhow, bail};
+use anyhow::anyhow;
 use std::pin::{pin, Pin};
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_stream::{Stream, StreamExt};
-use tracing::debug;
 
 
 pub struct Ingest {

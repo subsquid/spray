@@ -19,6 +19,7 @@ pub struct BlockData {
     pub hash: Base58Bytes,
     pub parent_slot: u64,
     pub parent_hash: Base58Bytes,
+    pub height: Option<u64>,
     pub timestamp: i64
 }
 

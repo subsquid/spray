@@ -1,4 +1,4 @@
-pub type Predicate<T> = Box<dyn Fn(&T) -> bool>;
+pub type Predicate<T> = Box<dyn Fn(&T) -> bool + Send>;
 
 
 pub struct ItemFilter<T, R> {
@@ -31,7 +31,7 @@ impl<T, R> ItemFilter<T, R> {
 
     pub fn add<F>(&mut self, pred: F)
     where
-        F: 'static + Fn(&T) -> bool
+        F: 'static + Fn(&T) -> bool + Send
     {
         self.predicates.push(Box::new(pred))
     }

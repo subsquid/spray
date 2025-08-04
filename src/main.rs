@@ -5,16 +5,18 @@ mod data;
 mod geyser;
 mod ingest;
 mod json_builder;
-mod server;
 mod query;
+mod server;
 
 
 use crate::cli::CLI;
 use crate::config::Config;
 use crate::geyser::create_geyser_client;
 use crate::ingest::{Broadcast, Ingest};
+use crate::server::RpcServer;
 use anyhow::{ensure, Context};
 use clap::Parser;
+use tokio::select;
 
 
 #[global_allocator]
@@ -41,7 +43,7 @@ fn main() -> anyhow::Result<()> {
 async fn run(cfg: Config) -> anyhow::Result<()> {
     let broadcast = Broadcast::new(20_000);
     
-    let ingest = {
+    let mut ingest = {
         let mut ingest = Ingest::new();
         for (name, src) in cfg.sources {
             let name: Name = name.leak();
@@ -52,10 +54,48 @@ async fn run(cfg: Config) -> anyhow::Result<()> {
         }
         ingest.start(broadcast.clone())
     };
-    
-    ingest.await?;
-    
-    Ok(())
+
+    let server_handle = RpcServer::new(broadcast)
+        .set_port(cfg.port.unwrap_or(3000))
+        .start()
+        .await?;
+
+    let res = select! {
+        res = &mut ingest => res,
+        _ = shutdown_signal() => Ok(()),
+    };
+
+    ingest.abort();
+    if server_handle.stop().is_ok() {
+        server_handle.stopped().await;
+    }
+
+    res
+}
+
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
 
 

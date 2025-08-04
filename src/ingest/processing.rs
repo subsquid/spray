@@ -24,6 +24,7 @@ pub async fn processing_loop(
                     hash: block.blockhash,
                     parent_slot: block.parent_slot,
                     parent_hash: block.parent_blockhash,
+                    height: block.block_height.map(|h| h.block_height),
                     timestamp: block.block_time.map_or(0, |t| t.timestamp)
                 };
                 debug!(

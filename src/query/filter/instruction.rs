@@ -1,4 +1,4 @@
-use super::item_filter::{ItemFilter, Relations};
+use super::item_filter::ItemFilter;
 use super::relation_mask::relation_mask;
 use super::selected_items::SelectedItems;
 use crate::data::{Instruction, TransactionData};
@@ -9,6 +9,7 @@ use std::collections::HashSet;
 
 relation_mask! {
     InstructionRelations {
+        transaction,
         transaction_balances,
         transaction_token_balances,
         transaction_instructions,
@@ -28,30 +29,39 @@ pub struct InstructionFilter {
 
 
 impl InstructionFilter {
-    pub fn new(requests: Vec<PreparedInstructionRequest>) -> Self {
+    pub fn new(requests: Vec<InstructionRequest>) -> Self {
+        let requests = requests
+            .into_iter()
+            .filter_map(compile_request)
+            .collect();
+
         Self {
             requests
         }
     }
-    
-    pub fn is_empty(&self) -> bool {
-        self.requests.is_empty()
+
+    pub fn is_non_trivial(&self) -> bool {
+        !self.requests.is_empty()
     }
 
     pub fn eval(&self, sel: &mut SelectedItems, tx: &TransactionData) {
         for (i, ins) in tx.instructions.iter().enumerate() {
             if let Some(rel) = ItemFilter::or(&self.requests, ins) {
-                sel.instructions[i] = true;
-                sel.include_all_instructions |= rel.has_transaction_instructions();
-                sel.include_all_balances |= rel.has_transaction_balances();
-                sel.include_all_token_balances |= rel.has_transaction_token_balances();
-                
-                if !sel.include_all_instructions && rel.has_inner_instructions() {
-                    Self::eval_inner_instructions(sel, tx, i);
-                }
+                sel.transaction |= rel.has_transaction();
+                sel.instructions.add_all(rel.has_transaction_instructions());
+                sel.balances.add_all(rel.has_transaction_balances());
+                sel.token_balances.add_all(rel.has_transaction_token_balances());
 
-                if !sel.include_all_instructions && rel.has_parent_instructions() {
-                    Self::eval_parent_instructions(sel, tx, i);
+                sel.instructions.add(i);
+
+                if !sel.instructions.includes_all() {
+                    if rel.has_inner_instructions() {
+                        Self::eval_inner_instructions(sel, tx, i);
+                    }
+
+                    if rel.has_parent_instructions() {
+                        Self::eval_parent_instructions(sel, tx, i);
+                    }
                 }
             }
         }
@@ -66,7 +76,7 @@ impl InstructionFilter {
         for i in instruction_index+1..tx.instructions.len() {
             let other = &tx.instructions[i].instruction_address;
             if this.len() < other.len() && this == &other[..this.len()] {
-                sel.instructions[i] = true;
+                sel.instructions.add(i);
             } else {
                 return;
             }
@@ -84,7 +94,7 @@ impl InstructionFilter {
         }
         for i in (0..instruction_index).rev() {
             if len == tx.instructions[i].instruction_address.len() {
-                sel.instructions[i] = true;
+                sel.instructions.add(i);
                 len -= 1;
                 if len == 0 {
                     return;
@@ -95,7 +105,7 @@ impl InstructionFilter {
 }
 
 
-pub fn compile_instruction_request(req: InstructionRequest) -> Option<PreparedInstructionRequest> {
+fn compile_request(req: InstructionRequest) -> Option<PreparedInstructionRequest> {
     let mut filter = PreparedInstructionRequest::default();
 
     if let Some(list) = req.program_id {
@@ -174,6 +184,7 @@ pub fn compile_instruction_request(req: InstructionRequest) -> Option<PreparedIn
         filter.add(move |ins| ins.is_committed == is_committed)
     }
 
+    filter.relations_mut().set_transaction(req.transaction);
     filter.relations_mut().set_transaction_balances(req.transaction_balances);
     filter.relations_mut().set_transaction_token_balances(req.transaction_token_balances);
     filter.relations_mut().set_transaction_instructions(req.transaction_instructions);
