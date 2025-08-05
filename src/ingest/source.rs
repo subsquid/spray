@@ -159,13 +159,30 @@ async fn source_session(
             let update = match upd {
                 UpdateOneof::Transaction(tx) => {
                     match TransactionUpdate::from_subscription_update(tx) {
-                        Ok(tx) => SourceUpdate::Transaction(tx),
+                        Ok(tx) => {
+                            debug!(
+                                slot = tx.slot,
+                                transaction_index = tx.index,
+                                "received"
+                            );
+                            SourceUpdate::Transaction(tx)
+                        },
                         Err(missing_field) => {
                             bail!("got transaction update with missing {} field", missing_field)
                         },
                     }
                 },
-                UpdateOneof::BlockMeta(block) => SourceUpdate::Block(block),
+                UpdateOneof::BlockMeta(block) => {
+                    debug!(
+                        slot = block.slot,
+                        block_time =% chrono::DateTime::from_timestamp(
+                            block.block_time.map_or(0, |t| t.timestamp), 
+                            0
+                        ).unwrap(),
+                        "published"
+                    );
+                    SourceUpdate::Block(block)
+                },
                 _ => continue
             };
             

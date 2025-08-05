@@ -69,6 +69,7 @@ pub struct Instruction {
     pub accounts: Vec<AccountIndex>,
     pub data: Base58Bytes,
     pub binary_data: Vec<u8>,
+    pub error: Option<String>,
     pub is_committed: bool,
     pub account_list: AccountList
 }

@@ -68,6 +68,18 @@ impl JsonBuilder {
         self.out.push(b'"');
     }
 
+    pub fn binary(&mut self, val: impl AsRef<[u8]>) {
+        let val = val.as_ref();
+        let beg = self.out.len();
+        let end = beg + 4 + val.len();
+        self.out.resize(end, 0);
+        self.out[beg] = b'"';
+        self.out[beg + 1] = b'0';
+        self.out[beg + 2] = b'x';
+        faster_hex::hex_encode(val, &mut self.out).expect("hex encoding is infallible");
+        self.out[end - 1] = b'"';
+    }
+
     pub fn value(&mut self, val: &impl Serialize) {
         serde_json::to_writer(&mut self.out, val).expect("serialization is infallible")
     }
@@ -107,6 +119,15 @@ impl JsonBuilder {
         } else {
             self.out.push(end)
         }
+    }
+    
+    pub fn array<T>(&mut self, list: impl IntoIterator<Item = T>, mut cb: impl FnMut(&mut Self, T)) {
+        self.begin_array();
+        for item in list {
+            cb(self, item);
+            self.comma();
+        }
+        self.end_array();
     }
 
     pub fn number_list<T: ToLexical>(&mut self, list: impl IntoIterator<Item = T>) {

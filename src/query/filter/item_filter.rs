@@ -17,6 +17,7 @@ impl<T, R> ItemFilter<T, R> {
         true
     }
     
+    #[allow(unused)]
     pub fn matches_all(&self) -> bool {
         self.predicates.is_empty()
     }

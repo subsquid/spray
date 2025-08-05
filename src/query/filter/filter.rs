@@ -32,16 +32,16 @@ impl Filter {
             self.transaction.eval(&mut sel, tx)
         }
         
-        if self.instruction.is_non_trivial() {
-            self.instruction.eval(&mut sel, tx)
-        }
-        
         if self.balance.is_non_trivial() {
             self.balance.eval(&mut sel, tx)
         }
         
         if self.token_balance.is_non_trivial() {
             self.token_balance.eval(&mut sel, tx)
+        }
+        
+        if self.instruction.is_non_trivial() {
+            self.instruction.eval(&mut sel, tx)
         }
         
         sel

@@ -1,3 +1,4 @@
+use anyhow::ensure;
 use crate::query::util::{field_selection, item_field_selection, request};
 use serde::{Deserialize, Serialize};
 
@@ -6,6 +7,8 @@ field_selection! {
     block: BlockFieldSelection,
     transaction: TransactionFieldSelection,
     instruction: InstructionFieldSelection,
+    balance: BalanceFieldSelection,
+    token_balance: TokenBalanceFieldSelection,
 }
 
 
@@ -51,6 +54,28 @@ item_field_selection! {
         compute_units_consumed,
         is_committed,
         has_dropped_log_messages,
+    }
+    
+    BalanceFieldSelection {
+        transaction_index,
+        account,
+        pre,
+        post,
+    }
+    
+    TokenBalanceFieldSelection {
+        transaction_index,
+        account,
+        pre_mint,
+        post_mint,
+        pre_decimals,
+        post_decimals,
+        pre_program_id,
+        post_program_id,
+        pre_owner,
+        post_owner,
+        pre_amount,
+        post_amount,
     }
 }
 
@@ -128,5 +153,23 @@ request! {
         pub instructions: Vec<InstructionRequest>,
         pub balances: Vec<BalanceRequest>,
         pub token_balances: Vec<TokenBalanceRequest>,
+    }
+}
+
+
+impl SolanaQuery {
+    pub fn validate(&self) -> anyhow::Result<()> {
+        let num_items = self.transactions.len() 
+            + self.instructions.len() 
+            + self.balances.len() 
+            + self.token_balances.len();
+
+        ensure!(
+            num_items <= 100,
+            "query contains {} item requests, but only 100 is allowed",
+            num_items
+        );
+
+        Ok(())
     }
 }

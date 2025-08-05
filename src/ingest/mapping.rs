@@ -2,11 +2,34 @@ use super::source::TransactionUpdate;
 use crate::data::{AccountList, Balance, Instruction, JsonString, TokenBalance, Transaction, TransactionData, TransactionVersion};
 use crate::geyser::solana::storage::confirmed_block::MessageAddressTableLookup;
 use crate::json_builder::{safe_prop, JsonBuilder};
+use solana_transaction_error::TransactionError;
+use tracing::error;
 
 
 pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
     let meta = update.meta;
 
+    let mut instruction_err: Option<(usize, String)> = None;
+    
+    let transaction_error = meta.err.map(|err| {
+        match bincode::deserialize::<TransactionError>(&err.err) {
+            Ok(err) => {
+                if let TransactionError::InstructionError(idx, ins_err) = &err {
+                    instruction_err = Some((*idx as usize, format!("{}", ins_err)))
+                }
+                serde_json::to_string(&err).expect("serialization is infallible")
+            },
+            Err(de_err) => {
+                error!(
+                    "failed to deserialize transaction error of {}: {:?}", 
+                    update.signatures.get(0).map_or_else(|| "?".to_string(), |sig| bs58::encode(sig).into_string()),
+                    de_err
+                );
+                "{\"_Unknown\": true}".to_string()
+            }
+        }
+    });
+    
     let transaction = Transaction {
         version: if update.versioned { TransactionVersion::Legacy } else { TransactionVersion::Other(0) },
         account_keys: update.account_keys.len(),
@@ -16,7 +39,7 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
         num_required_signatures: update.header.num_required_signatures as u8,
         recent_blockhash: bs58::encode(&update.recent_blockhash).into_string(),
         signatures: JsonBuilder::render(|json| json.base58_list(&update.signatures)),
-        err: None,
+        err: transaction_error,
         compute_units_consumed: meta.compute_units_consumed,
         fee: meta.fee,
         loaded_addresses: JsonBuilder::render(|json| {
@@ -64,6 +87,7 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
                         accounts: $ins.accounts,
                         data: bs58::encode(&$ins.data).into_string(),
                         binary_data: $ins.data,
+                        error: None,
                         account_list: accounts.clone(),
                         is_committed: transaction.err.is_none(),
                     });
@@ -87,7 +111,23 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
 
                 push_instruction!(ins);
             }
+            
+            // set instruction error
+            if let Some((errored_instruction_idx, err)) = instruction_err.as_ref() {
+                if *errored_instruction_idx == i {
+                    for ins in instructions.iter_mut().rev() {
+                        if ins.instruction_address[0] != i {
+                            break
+                        }
+                        if ins.instruction_address == address {
+                            ins.error = Some(err.clone());
+                            address.pop();
+                        }
+                    }
+                }
+            }
         }
+        
         instructions
     };
 

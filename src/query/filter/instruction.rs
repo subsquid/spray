@@ -1,3 +1,4 @@
+#![allow(unused)]
 use super::item_filter::ItemFilter;
 use super::relation_mask::relation_mask;
 use super::selected_items::SelectedItems;
@@ -133,6 +134,32 @@ fn compile_request(req: InstructionRequest) -> Option<PreparedInstructionRequest
             });
         }
     }
+    
+    macro_rules! fixed_disc {
+        ($prop:ident, $len:literal) => {
+            if let Some(list) = req.$prop {
+                let list: Vec<_> = list.into_iter().filter_map(|s| {
+                    let bytes = parse_hex(&s)?;
+                    (bytes.len() == $len).then_some(bytes)
+                }).collect();
+                
+                if list.is_empty() {
+                    return None
+                }
+        
+                filter.add(move |ins| {
+                    let Some(disc) = ins.binary_data.get(..$len) else {
+                        return false
+                    };
+                    list.iter().any(|d| d == disc)
+                });
+            }
+        };
+    }
+    fixed_disc!(d1, 1);
+    fixed_disc!(d2, 2);
+    fixed_disc!(d4, 4);
+    fixed_disc!(d8, 8);
 
     if let Some(list) = req.mentions_account {
         if list.is_empty() {

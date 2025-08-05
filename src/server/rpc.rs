@@ -2,6 +2,7 @@ use crate::data::{DataMessage, JsonString};
 use crate::ingest::Broadcast;
 use crate::json_builder::RawJson;
 use crate::query::{render_block_message, render_transaction_message, FieldSelection, Filter, SolanaQuery};
+use jsonrpsee::types::{ErrorCode, ErrorObject};
 use jsonrpsee::{RpcModule, SubscriptionMessage};
 use tokio::select;
 use tokio::sync::broadcast::error::RecvError;
@@ -16,11 +17,11 @@ pub fn build_rpc_module(broadcast: Broadcast) -> RpcModule<Broadcast> {
         "sprayUnsubscribe",
         |params, pending, broadcast, _| {
             let span = debug_span!("subscription", connection_id = pending.connection_id().0);
+            let span_guard = span.enter();
 
             let query = match params.one::<SolanaQuery>() {
                 Ok(query) => query,
                 Err(err) => {
-                    let _span = span.enter();
                     debug!(
                         "invalid query - {}",
                         err.data().map_or("unknown syntax error", |json| json.get())
@@ -29,6 +30,20 @@ pub fn build_rpc_module(broadcast: Broadcast) -> RpcModule<Broadcast> {
                     return
                 }
             };
+            
+            if let Err(err) = SolanaQuery::validate(&query) {
+                let msg = format!("invalid query: {}", err);
+                debug!(msg);
+                
+                let err = ErrorObject::owned::<()>(
+                    ErrorCode::InvalidParams.code(),
+                    msg,
+                    None
+                );
+                
+                tokio::spawn(pending.reject(err));
+                return 
+            }
 
             debug!(
                 query =% serde_json::to_string(&query).unwrap(),
@@ -36,6 +51,8 @@ pub fn build_rpc_module(broadcast: Broadcast) -> RpcModule<Broadcast> {
             
             let mut state = SubscriptionState::new(query);
 
+            drop(span_guard);
+            
             tokio::spawn(async move {
                 let sink = match pending.accept().await {
                     Ok(sink) => sink,

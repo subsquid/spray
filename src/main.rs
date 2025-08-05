@@ -1,4 +1,3 @@
-#![allow(unused)]
 mod cli;
 mod config;
 mod data;

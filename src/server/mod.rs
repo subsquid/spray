@@ -19,6 +19,7 @@ impl RpcServer {
         let config = ServerConfig::builder()
             .set_message_buffer_capacity(5)
             .max_response_body_size(4 * 1024 * 1024)
+            .max_request_body_size(257 * 1024)
             .build();
         
         Self {
