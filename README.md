@@ -54,6 +54,12 @@ Block notifications are pushed to the client in the following circumstances
 * Every fifth slot since the last pushed block or subscription start
 * Every block if `query.includeAllBlocks` is `true`.
 
+### Sequencing
+
+* Slot numbers are non-decreasing
+* Block notification is always the last for the given slot
+* Delivery of all data messages is not guaranteed 
+
 ## Setup
 
 ```
