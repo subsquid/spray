@@ -1,4 +1,4 @@
-# spray
+# spray ![beta](https://img.shields.io/badge/status-beta-yellow)
 
 Proxy service for [Yellowstone Geyser gRPC plugin](https://github.com/rpcpool/yellowstone-grpc),
 that exposes transactions and blocks via JSON-RPC Websocket subscription 
@@ -6,7 +6,7 @@ with advanced filtering capabilities.
 
 ## Features
 
-* Subsquid portal-like query format for data filtering
+* Subsquid portal-like queries for data filtering
 * Subsquid portal-like data format for data messages
 * Multiple geyser endpoints can be configured for reliable and fast data delivery
 
@@ -57,7 +57,7 @@ Block notifications are pushed to the client in the following circumstances
 ### Sequencing
 
 * Slot numbers are non-decreasing
-* Block notification is always the last for the given slot
+* Block notification marks the end of a slot (no notifications for the given slot will be received in the future)
 * Delivery of all data messages is not guaranteed 
 
 ## Setup
