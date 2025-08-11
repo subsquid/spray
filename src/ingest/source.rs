@@ -4,9 +4,10 @@ use crate::geyser::api::{CommitmentLevel, SubscribeRequest, SubscribeRequestFilt
 use crate::geyser::solana::storage::confirmed_block::{CompiledInstruction, MessageAddressTableLookup, MessageHeader, TransactionStatusMeta};
 use crate::geyser::GeyserClient;
 use crate::Name;
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 use std::collections::HashMap;
 use std::time::Duration;
+use tokio::time::timeout;
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info, instrument};
 
@@ -98,6 +99,7 @@ pub async fn source_loop(
         ).await {
             Ok(_) => return Ok(()),
             Err(err) => {
+                crate::metrics::register_data_source_error(name);
                 if first_session && !update_received {
                     return Err(err)
                 } else {
@@ -153,8 +155,11 @@ async fn source_session(
         .into_inner();
 
     debug!("subscribed to updates");
-
-    while let Some(upd) = updates.try_next().await? {
+    
+    while let Some(upd) = timeout(Duration::from_secs(30), updates.try_next())
+        .await
+        .map_err(|_| anyhow!("haven't received updates for more than 30 seconds"))?? 
+    {
         if let Some(upd) = upd.update_oneof {
             let update = match upd {
                 UpdateOneof::Transaction(tx) => {

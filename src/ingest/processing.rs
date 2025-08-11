@@ -4,7 +4,7 @@ use crate::data::{BlockData, DataMessage};
 use std::pin::pin;
 use std::sync::Arc;
 use tokio_stream::{Stream, StreamExt};
-use tracing::debug;
+use tracing::{debug, error};
 
 
 pub type Broadcast = tokio::sync::broadcast::Sender<Arc<DataMessage>>;
@@ -33,17 +33,39 @@ pub async fn processing_loop(
                     source = msg.source,
                     "published"
                 );
+                crate::metrics::register_block_publication(
+                    msg.source,
+                    block.slot,
+                    block.timestamp
+                );
                 DataMessage::Block(block)
             },
             SourceUpdate::Transaction(tx) => {
-                let tx = map_transaction(tx);
-                debug!(
-                    slot = tx.slot,
-                    transaction_index = tx.transaction_index,
-                    source = msg.source,
-                    "published"
-                );
-                DataMessage::Transaction(tx)
+                let slot = tx.slot;
+                let transaction_index = tx.index;
+                match map_transaction(tx) {
+                    Ok(tx) => {
+                        debug!(
+                            slot,
+                            transaction_index,
+                            source = msg.source,
+                            "published"
+                        );
+                        crate::metrics::register_tx_publication(msg.source);
+                        DataMessage::Transaction(tx)
+                    },
+                    Err(err) => {
+                        error!(
+                            slot,
+                            transaction_index,
+                            source = msg.source,
+                            err =? err,
+                            "failed to map transaction"
+                        );
+                        crate::metrics::register_mapping_error(msg.source);
+                        continue
+                    }
+                }
             }
         };
         let _ = broadcast.send(Arc::new(data_msg));

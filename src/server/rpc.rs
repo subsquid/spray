@@ -61,7 +61,10 @@ pub fn build_rpc_module(broadcast: Broadcast) -> RpcModule<Broadcast> {
                         return
                     }
                 };
+                
                 debug!("accepted");
+                let _scope = crate::metrics::register_subscription_scope();
+
                 let mut rx = broadcast.subscribe();
                 loop {
                     select! {

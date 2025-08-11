@@ -1,9 +1,13 @@
 mod rpc;
+mod metrics;
 
 
+use self::metrics::MetricsLayer;
 use self::rpc::build_rpc_module;
 use crate::ingest::Broadcast;
+use crate::metrics::create_metrics_registry;
 use jsonrpsee::server::{Server, ServerConfig, ServerHandle};
+use std::sync::Arc;
 use tracing::info;
 
 
@@ -37,13 +41,19 @@ impl RpcServer {
     pub async fn start(self) -> anyhow::Result<ServerHandle> {
         let server = Server::builder()
             .set_config(self.config)
+            .set_http_middleware({
+                let metrics_registry = create_metrics_registry();
+                tower::ServiceBuilder::new().layer(
+                    MetricsLayer::new(Arc::new(metrics_registry))
+                )
+            })
             .build(("0.0.0.0", self.port))
             .await?;
 
-        let module = build_rpc_module(self.broadcast);
+        let rpc = build_rpc_module(self.broadcast);
         
         let addr = server.local_addr()?;
-        let handle = server.start(module);
+        let handle = server.start(rpc);
         info!("server is listening on port {}", addr.port());
         Ok(handle)
     }

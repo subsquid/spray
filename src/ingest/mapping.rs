@@ -2,11 +2,19 @@ use super::source::TransactionUpdate;
 use crate::data::{AccountList, Balance, Instruction, JsonString, TokenBalance, Transaction, TransactionData, TransactionVersion};
 use crate::geyser::solana::storage::confirmed_block::MessageAddressTableLookup;
 use crate::json_builder::{safe_prop, JsonBuilder};
+use anyhow::{anyhow, ensure, Context};
 use solana_transaction_error::TransactionError;
 use tracing::error;
 
 
-pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
+macro_rules! conv {
+    ($t:ty, $($exp:tt)+) => {
+        <$t>::try_from($($exp)*).context(concat!(stringify!($($exp)*), " as ", stringify!($t)))
+    };
+}
+
+
+pub fn map_transaction(update: TransactionUpdate) -> anyhow::Result<TransactionData> {
     let meta = update.meta;
 
     let mut instruction_err: Option<(usize, String)> = None;
@@ -25,6 +33,7 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
                     update.signatures.get(0).map_or_else(|| "?".to_string(), |sig| bs58::encode(sig).into_string()),
                     de_err
                 );
+                crate::metrics::register_unparsed_transaction_error();
                 "{\"_Unknown\": true}".to_string()
             }
         }
@@ -34,9 +43,9 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
         version: if update.versioned { TransactionVersion::Legacy } else { TransactionVersion::Other(0) },
         account_keys: update.account_keys.len(),
         address_table_lookups: render_address_table_lookups(&update.address_table_lookups),
-        num_readonly_signed_accounts: update.header.num_readonly_signed_accounts as u8,
-        num_readonly_unsigned_accounts: update.header.num_readonly_unsigned_accounts as u8,
-        num_required_signatures: update.header.num_required_signatures as u8,
+        num_readonly_signed_accounts: conv!(u8, update.header.num_readonly_signed_accounts)?,
+        num_readonly_unsigned_accounts: conv!(u8, update.header.num_readonly_unsigned_accounts)?,
+        num_required_signatures: conv!(u8, update.header.num_required_signatures)?,
         recent_blockhash: bs58::encode(&update.recent_blockhash).into_string(),
         signatures: JsonBuilder::render(|json| json.base58_list(&update.signatures)),
         err: transaction_error,
@@ -80,10 +89,12 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
             address.push(i);
 
             macro_rules! push_instruction {
-                ($ins:ident) => {
+                ($ins:ident) => {{
+                    let program_id = conv!(u8, $ins.program_id_index)?;
+                    ensure!((program_id as usize) < accounts.len());
                     instructions.push(Instruction {
                         instruction_address: address.clone(),
-                        program_id: $ins.program_id_index as u8,
+                        program_id,
                         accounts: $ins.accounts,
                         data: bs58::encode(&$ins.data).into_string(),
                         binary_data: $ins.data,
@@ -91,21 +102,21 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
                         account_list: accounts.clone(),
                         is_committed: transaction.err.is_none(),
                     });
-                };
+                }};
             }
 
             push_instruction!(ins);
 
             for ins in inner {
                 let stack_height = ins.stack_height.unwrap_or(2) as usize;
-                assert!(stack_height > 1);
+                ensure!(stack_height > 1);
 
                 address.truncate(stack_height);
 
                 if address.len() == stack_height {
                     address[stack_height - 1] += 1;
                 } else {
-                    assert_eq!(address.len() + 1, stack_height);
+                    ensure!(address.len() + 1 == stack_height);
                     address.push(0);
                 }
 
@@ -132,8 +143,8 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
     };
 
     let balances = {
-        assert_eq!(meta.pre_balances.len(), meta.post_balances.len());
-        assert!(accounts.len() >= meta.pre_balances.len());
+        ensure!(meta.pre_balances.len() == meta.post_balances.len());
+        ensure!(accounts.len() >= meta.pre_balances.len());
         let mut balances = Vec::with_capacity(
             std::cmp::min(accounts.len(), meta.pre_balances.len() + meta.post_balances.len())
         );
@@ -154,7 +165,11 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
         let mut balances = vec![TokenBalance::default(); accounts.len()];
 
         for b in meta.pre_token_balances {
-            let rec = &mut balances[b.account_index as usize];
+            let rec = balances.get_mut(b.account_index as usize).ok_or_else(|| anyhow!(
+                "got account_index = {} in pre_token_balances while there are only {} accounts", 
+                b.account_index, 
+                accounts.len()
+            ))?;
             rec.account = accounts[b.account_index as usize].clone();
             rec.pre_mint = Some(b.mint);
             rec.pre_decimals = b.ui_token_amount.as_ref().map(|ui| ui.decimals);
@@ -164,7 +179,11 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
         }
 
         for b in meta.post_token_balances {
-            let rec = &mut balances[b.account_index as usize];
+            let rec = balances.get_mut(b.account_index as usize).ok_or_else(|| anyhow!(
+                "got account_index = {} in post_token_balances while there are only {} accounts", 
+                b.account_index, 
+                accounts.len()
+            ))?;
             rec.account = accounts[b.account_index as usize].clone();
             rec.post_mint = Some(b.mint);
             rec.post_decimals = b.ui_token_amount.as_ref().map(|ui| ui.decimals);
@@ -178,7 +197,7 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
         balances
     };
 
-    TransactionData {
+    Ok(TransactionData {
         slot: update.slot,
         transaction_index: update.index,
         transaction,
@@ -186,7 +205,7 @@ pub fn map_transaction(update: TransactionUpdate) -> TransactionData {
         balances,
         token_balances,
         accounts
-    }
+    })
 }
 
 

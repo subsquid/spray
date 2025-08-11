@@ -4,6 +4,7 @@ mod data;
 mod geyser;
 mod ingest;
 mod json_builder;
+mod metrics;
 mod query;
 mod server;
 
