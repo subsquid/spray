@@ -20,7 +20,7 @@ Only a single subscription kind is available.
 
 ### Data filter
 
-Data filter follows [Subsquid portal Solana data query format](https://docs.sqd.ai/solana-indexing/network-api/solana-api/#data-requests) 
+Data filter follows [Subsquid portal Solana data query format](https://docs.sqd.dev) 
 except that block range selection parameters (`fromBlock`, `toBlock`, `parentBlockHash`) 
 are not available and forbidden.
 
